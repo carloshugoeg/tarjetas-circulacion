@@ -1,0 +1,10 @@
+# Backend FastAPI dependencies only.
+# The frontend is React/Vite and uses frontend/package.json.
+# Do not add Streamlit, Flet, Dash, pandas UI dependencies, or frontend Python packages here.
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary
+pydantic
+pydantic-settings
+python-dotenv
