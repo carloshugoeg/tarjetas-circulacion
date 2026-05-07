@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 from typing import Optional, List
 from datetime import datetime, date
 from decimal import Decimal
@@ -124,6 +124,14 @@ class VehiculoBase(BaseModel):
     combustible: TipoCombustibleEnum
     uso: UsoVehiculoEnum = UsoVehiculoEnum.PARTICULAR
 
+    @field_validator("modelo_anio")
+    @classmethod
+    def validate_modelo_anio(cls, value: int):
+        max_year = date.today().year + 1
+        if value < 1900 or value > max_year:
+            raise ValueError(f"modelo_anio debe estar entre 1900 y {max_year}")
+        return value
+
 class VehiculoCreate(VehiculoBase):
     pass
 
@@ -145,6 +153,16 @@ class VehiculoUpdate(BaseModel):
     combustible: Optional[TipoCombustibleEnum] = None
     uso: Optional[UsoVehiculoEnum] = None
 
+    @field_validator("modelo_anio")
+    @classmethod
+    def validate_modelo_anio(cls, value: Optional[int]):
+        if value is None:
+            return value
+        max_year = date.today().year + 1
+        if value < 1900 or value > max_year:
+            raise ValueError(f"modelo_anio debe estar entre 1900 y {max_year}")
+        return value
+
 class Vehiculo(VehiculoBase):
     id_vehiculo: int
     fecha_registro: datetime
@@ -162,6 +180,12 @@ class TarjetaCirculacionBase(BaseModel):
     id_usuario_emision: Optional[int] = None
     observaciones: Optional[str] = None
 
+    @model_validator(mode="after")
+    def validate_fecha_vencimiento(self):
+        if self.fecha_vencimiento <= self.fecha_emision:
+            raise ValueError("fecha_vencimiento debe ser posterior a fecha_emision")
+        return self
+
 class TarjetaCirculacionCreate(TarjetaCirculacionBase):
     pass
 
@@ -174,6 +198,42 @@ class TarjetaCirculacionUpdate(BaseModel):
     estado: Optional[EstadoTarjetaEnum] = None
     id_usuario_emision: Optional[int] = None
     observaciones: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_fecha_vencimiento(self):
+        if (
+            self.fecha_emision is not None
+            and self.fecha_vencimiento is not None
+            and self.fecha_vencimiento <= self.fecha_emision
+        ):
+            raise ValueError("fecha_vencimiento debe ser posterior a fecha_emision")
+        return self
+
+
+class CambioPropietarioRequest(BaseModel):
+    nuevo_propietario_id: int
+    usuario_id: Optional[int] = None
+
+
+class CambioMotorRequest(BaseModel):
+    nuevo_motor: str = Field(..., min_length=1)
+    usuario_id: Optional[int] = None
+
+
+class CambioColorRequest(BaseModel):
+    nuevo_color_id: int
+    usuario_id: Optional[int] = None
+
+
+class DesactivarTarjetaRequest(BaseModel):
+    nuevo_estado: EstadoTarjetaEnum
+    motivo: Optional[str] = None
+    usuario_id: Optional[int] = None
+
+
+class ReactivarTarjetaRequest(BaseModel):
+    motivo: Optional[str] = None
+    usuario_id: Optional[int] = None
 
 class TarjetaCirculacion(TarjetaCirculacionBase):
     id_tarjeta: int

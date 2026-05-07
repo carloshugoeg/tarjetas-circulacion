@@ -70,6 +70,12 @@ def get_vehiculo_by_vin(db: Session, vin: str):
 def get_vehiculo_by_placa(db: Session, placa: str):
     return db.query(models.Vehiculo).filter(models.Vehiculo.placa == placa).first()
 
+def linea_belongs_to_marca(db: Session, linea_id: int, marca_id: int):
+    return db.query(models.LineaVehiculo).filter(
+        models.LineaVehiculo.id_linea == linea_id,
+        models.LineaVehiculo.id_marca == marca_id,
+    ).first() is not None
+
 def get_vehiculos(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.Vehiculo).offset(skip).limit(limit).all()
 
@@ -100,6 +106,9 @@ def delete_vehiculo(db: Session, vehiculo_id: int):
 # --- TARJETA_CIRCULACION ---
 def get_tarjeta(db: Session, tarjeta_id: int):
     return db.query(models.TarjetaCirculacion).filter(models.TarjetaCirculacion.id_tarjeta == tarjeta_id).first()
+
+def get_tarjeta_by_numero(db: Session, numero_tarjeta: str):
+    return db.query(models.TarjetaCirculacion).filter(models.TarjetaCirculacion.numero_tarjeta == numero_tarjeta).first()
 
 def get_tarjetas(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.TarjetaCirculacion).offset(skip).limit(limit).all()
