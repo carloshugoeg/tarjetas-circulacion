@@ -40,14 +40,15 @@ const emptyCatalogs = {
   colores: [],
 };
 
+const numericPayloadFields = new Set(["modelo_anio", "cilindros", "cilindrada_cc", "ejes", "pasajeros", "tonelaje"]);
+
 function compactPayload(payload) {
   return Object.fromEntries(
     Object.entries(payload).map(([key, value]) => {
       if (value === "") return [key, null];
-      if (key.startsWith("id_") || ["modelo_anio", "cilindros", "cilindrada_cc", "ejes", "pasajeros"].includes(key)) {
+      if (key.startsWith("id_") || numericPayloadFields.has(key)) {
         return [key, value === null ? null : Number(value)];
       }
-      if (key === "tonelaje") return [key, value === null ? null : Number(value)];
       return [key, value];
     })
   );
@@ -555,6 +556,7 @@ function MantenimientoView({ tarjetas, propietarios, vehiculos, colores, onActio
       <div className="maintenance-summary">
         <label>Tarjeta a mantener</label>
         <select value={tarjetaId} onChange={(event) => setTarjetaId(event.target.value)}>
+          {tarjetas.length === 0 && <option value="">Sin tarjetas disponibles</option>}
           {tarjetas.map((tarjeta) => (
             <option key={tarjeta.id_tarjeta} value={tarjeta.id_tarjeta}>
               {tarjeta.numero_tarjeta} · {tarjeta.placa} · {tarjeta.propietario_nombre}
@@ -583,13 +585,14 @@ function MantenimientoView({ tarjetas, propietarios, vehiculos, colores, onActio
             )
           }
           onSubmit={(payload) => onAction(() => api.cambioPropietario(tarjetaId, payload.id_propietario), "Propietario actualizado")}
-          disabled={propietariosDisponibles.length === 0}
+          disabled={!selected || propietariosDisponibles.length === 0}
         />
         <MaintenanceCard
           icon={Gauge}
           title="Cambio de motor"
           fields={<TextField name="numero_motor" label="Nuevo numero de motor" required />}
           onSubmit={(payload) => onAction(() => api.cambioMotor(selectedVehicle?.id_vehiculo, payload.numero_motor), "Motor actualizado")}
+          disabled={!selectedVehicle}
         />
         <MaintenanceCard
           icon={Palette}
@@ -602,7 +605,7 @@ function MantenimientoView({ tarjetas, propietarios, vehiculos, colores, onActio
             )
           }
           onSubmit={(payload) => onAction(() => api.cambioColor(selectedVehicle?.id_vehiculo, payload.id_color), "Color actualizado")}
-          disabled={coloresDisponibles.length === 0}
+          disabled={!selectedVehicle || coloresDisponibles.length === 0}
         />
         <MaintenanceCard
           icon={CircleOff}
@@ -623,6 +626,7 @@ function MantenimientoView({ tarjetas, propietarios, vehiculos, colores, onActio
               : () => api.desactivarTarjeta(tarjetaId, payload.estado, payload.motivo);
             onAction(action, payload.estado === "VIGENTE" ? "Tarjeta reactivada" : "Tarjeta desactivada");
           }}
+          disabled={!selected}
         />
       </div>
     </section>

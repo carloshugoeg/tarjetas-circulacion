@@ -1,9 +1,9 @@
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql://postgres:2721@localhost:5432/circulacion_db"
+    DATABASE_URL: str = Field(..., description="PostgreSQL connection URL for the application database")
     PROJECT_NAME: str = "Sistema de Gestion de Tarjetas de Circulacion"
     ALLOWED_ORIGINS: list[str] = [
         "http://localhost:5173",

@@ -10,18 +10,16 @@ from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
+
+if not TEST_DATABASE_URL:
+    pytest.skip("Set TEST_DATABASE_URL to run PostgreSQL integration tests.", allow_module_level=True)
+
+os.environ.setdefault("DATABASE_URL", TEST_DATABASE_URL)
+
 from backend.core.database import Base, get_db
 from backend.main import app
 from backend.models import models
-
-
-TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
-
-pytestmark = pytest.mark.skipif(
-    not TEST_DATABASE_URL,
-    reason="Set TEST_DATABASE_URL to run PostgreSQL integration tests.",
-)
-
 
 @pytest.fixture()
 def db_session():
@@ -211,6 +209,13 @@ def test_tarjeta_requires_expiration_after_issue_date(client):
     response = client.post("/api/tarjetas/", json=payload)
 
     assert response.status_code == 422
+
+
+def test_partial_tarjeta_date_update_checks_existing_issue_date(client):
+    response = client.patch("/api/tarjetas/1", json={"fecha_vencimiento": "2000-01-01"})
+
+    assert response.status_code == 400
+    assert "fecha_vencimiento" in response.json()["detail"]
 
 
 def vehiculo_payload(**overrides):

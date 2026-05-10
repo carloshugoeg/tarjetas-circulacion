@@ -1,13 +1,20 @@
 from sqlalchemy.orm import Session
 from backend.models import models
 from backend.schemas import schemas
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
+from typing import Optional
 
 
 def apply_updates(db_obj, values: dict):
     for key, value in values.items():
         setattr(db_obj, key, value)
     return db_obj
+
+
+def append_observation(current: Optional[str], label: str, value: Optional[str]):
+    if not value:
+        return current
+    return f"{current or ''}\n{label}: {value}"
 
 # --- USUARIO_SISTEMA ---
 def get_usuario(db: Session, usuario_id: int):
@@ -144,13 +151,15 @@ def get_alertas(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.Alerta).order_by(models.Alerta.fecha_generacion.desc()).offset(skip).limit(limit).all()
 
 def get_dashboard_summary(db: Session):
+    today = date.today()
+    soon = today + timedelta(days=30)
     total_tarjetas = db.query(models.TarjetaCirculacion).count()
     vigentes = db.query(models.TarjetaCirculacion).filter(models.TarjetaCirculacion.estado == models.EstadoTarjetaEnum.VIGENTE).count()
     suspendidas = db.query(models.TarjetaCirculacion).filter(models.TarjetaCirculacion.estado == models.EstadoTarjetaEnum.SUSPENDIDA).count()
-    vencidas = db.query(models.TarjetaCirculacion).filter(models.TarjetaCirculacion.fecha_vencimiento < date.today()).count()
+    vencidas = db.query(models.TarjetaCirculacion).filter(models.TarjetaCirculacion.fecha_vencimiento < today).count()
     proximas = db.query(models.TarjetaCirculacion).filter(
-        models.TarjetaCirculacion.fecha_vencimiento >= date.today(),
-        models.TarjetaCirculacion.fecha_vencimiento <= date.today() + timedelta(days=30),
+        models.TarjetaCirculacion.fecha_vencimiento >= today,
+        models.TarjetaCirculacion.fecha_vencimiento <= soon,
     ).count()
     return {
         "total_tarjetas": total_tarjetas,
@@ -174,6 +183,13 @@ def log_cambio(db: Session, tarjeta_id: int, tipo: models.TipoCambioEnum, anteri
     )
     db.add(db_historial)
 
+
+def get_vigente_tarjeta_by_vehiculo(db: Session, vehiculo_id: int):
+    return db.query(models.TarjetaCirculacion).filter(
+        models.TarjetaCirculacion.id_vehiculo == vehiculo_id,
+        models.TarjetaCirculacion.estado == models.EstadoTarjetaEnum.VIGENTE,
+    ).first()
+
 def update_propietario_tarjeta(db: Session, tarjeta_id: int, nuevo_propietario_id: int, usuario_id: int = None):
     db_tarjeta = get_tarjeta(db, tarjeta_id)
     if not db_tarjeta:
@@ -196,11 +212,7 @@ def update_motor_vehiculo(db: Session, vehiculo_id: int, nuevo_motor: str, usuar
     valor_anterior = db_vehiculo.numero_motor
     db_vehiculo.numero_motor = nuevo_motor
     
-    # Buscamos la tarjeta vigente para registrar el cambio
-    db_tarjeta = db.query(models.TarjetaCirculacion).filter(
-        models.TarjetaCirculacion.id_vehiculo == vehiculo_id,
-        models.TarjetaCirculacion.estado == models.EstadoTarjetaEnum.VIGENTE
-    ).first()
+    db_tarjeta = get_vigente_tarjeta_by_vehiculo(db, vehiculo_id)
     
     if db_tarjeta:
         log_cambio(db, db_tarjeta.id_tarjeta, models.TipoCambioEnum.MOTOR, valor_anterior, nuevo_motor, usuario_id)
@@ -217,10 +229,7 @@ def update_color_vehiculo(db: Session, vehiculo_id: int, nuevo_color_id: int, us
     valor_anterior = str(db_vehiculo.id_color)
     db_vehiculo.id_color = nuevo_color_id
 
-    db_tarjeta = db.query(models.TarjetaCirculacion).filter(
-        models.TarjetaCirculacion.id_vehiculo == vehiculo_id,
-        models.TarjetaCirculacion.estado == models.EstadoTarjetaEnum.VIGENTE
-    ).first()
+    db_tarjeta = get_vigente_tarjeta_by_vehiculo(db, vehiculo_id)
 
     if db_tarjeta:
         log_cambio(db, db_tarjeta.id_tarjeta, models.TipoCambioEnum.COLOR, valor_anterior, str(nuevo_color_id), usuario_id)
@@ -236,13 +245,12 @@ def deactivate_tarjeta(db: Session, tarjeta_id: int, nuevo_estado: models.Estado
     
     valor_anterior = db_tarjeta.estado.value
     db_tarjeta.estado = nuevo_estado
-    if motivo:
-        db_tarjeta.observaciones = (db_tarjeta.observaciones or "") + f"\nMotivo desactivación: {motivo}"
+    db_tarjeta.observaciones = append_observation(db_tarjeta.observaciones, "Motivo desactivacion", motivo)
     
     log_cambio(db, tarjeta_id, models.TipoCambioEnum.ESTADO, valor_anterior, nuevo_estado.value, usuario_id)
     
     # Si es impago o suspensión, generar alerta
-    if nuevo_estado in [models.EstadoTarjetaEnum.SUSPENDIDA, models.EstadoTarjetaEnum.CANCELADA]:
+    if nuevo_estado in (models.EstadoTarjetaEnum.SUSPENDIDA, models.EstadoTarjetaEnum.CANCELADA):
         tipo_alerta = models.TipoAlertaEnum.SUSPENSION_ADMINISTRATIVA
         if "impago" in (motivo or "").lower():
             tipo_alerta = models.TipoAlertaEnum.IMPAGO
@@ -265,8 +273,7 @@ def reactivate_tarjeta(db: Session, tarjeta_id: int, motivo: str = None, usuario
 
     valor_anterior = db_tarjeta.estado.value
     db_tarjeta.estado = models.EstadoTarjetaEnum.VIGENTE
-    if motivo:
-        db_tarjeta.observaciones = (db_tarjeta.observaciones or "") + f"\nMotivo reactivacion: {motivo}"
+    db_tarjeta.observaciones = append_observation(db_tarjeta.observaciones, "Motivo reactivacion", motivo)
 
     log_cambio(db, tarjeta_id, models.TipoCambioEnum.ESTADO, valor_anterior, models.EstadoTarjetaEnum.VIGENTE.value, usuario_id)
 

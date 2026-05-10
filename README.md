@@ -22,6 +22,13 @@ db_init/      Schema, catalogos y datos de prueba PostgreSQL
 docker compose up --build
 ```
 
+Docker Compose levanta PostgreSQL 15 y le pasa al backend:
+```text
+DATABASE_URL=postgresql://user_circulacion:password_circulacion@db:5432/circulacion_db
+```
+
+Sin Docker, crea un `.env` desde `.env.example` y ajusta `DATABASE_URL` a tu PostgreSQL local. El backend no trae una URL hardcodeada: si `DATABASE_URL` no existe, falla al arrancar para evitar conectarse por accidente a una base equivocada.
+
 Las imagenes Docker usan las imagenes oficiales de Docker Hub.
 
 Si Docker Desktop esta instalado pero `docker` no aparece en el PATH de PowerShell, usa:
@@ -87,3 +94,5 @@ cd frontend
 npm run build
 npm audit --audit-level=moderate
 ```
+
+Las pruebas de integracion usan `TEST_DATABASE_URL` porque eliminan y recrean todas las tablas. No uses la base principal para ese valor. Si `TEST_DATABASE_URL` no existe, las pruebas se omiten de forma segura.

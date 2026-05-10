@@ -20,6 +20,13 @@ def validate_linea_marca(db: Session, marca_id: int, linea_id: int):
         raise HTTPException(status_code=400, detail="La linea no pertenece a la marca seleccionada")
 
 
+def validate_tarjeta_dates(current: models.TarjetaCirculacion, changes: schemas.TarjetaCirculacionUpdate):
+    fecha_emision = changes.fecha_emision or current.fecha_emision
+    fecha_vencimiento = changes.fecha_vencimiento or current.fecha_vencimiento
+    if fecha_vencimiento <= fecha_emision:
+        raise HTTPException(status_code=400, detail="fecha_vencimiento debe ser posterior a fecha_emision")
+
+
 @router.get("/resumen/", tags=["Dashboard"])
 def read_resumen(db: Session = Depends(get_db)):
     return crud.get_dashboard_summary(db)
@@ -159,13 +166,16 @@ def create_tarjeta(tarjeta: schemas.TarjetaCirculacionCreate, db: Session = Depe
 
 @router.patch("/tarjetas/{tarjeta_id}", response_model=schemas.TarjetaCirculacion, tags=["Tarjetas"])
 def update_tarjeta(tarjeta_id: int, tarjeta: schemas.TarjetaCirculacionUpdate, db: Session = Depends(get_db)):
+    current = crud.get_tarjeta(db, tarjeta_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Tarjeta not found")
+    validate_tarjeta_dates(current, tarjeta)
+
     try:
         db_tarjeta = crud.update_tarjeta(db, tarjeta_id, tarjeta)
     except IntegrityError as exc:
         db.rollback()
         commit_error_to_http(exc)
-    if not db_tarjeta:
-        raise HTTPException(status_code=404, detail="Tarjeta not found")
     return db_tarjeta
 
 
