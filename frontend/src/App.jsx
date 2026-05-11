@@ -191,13 +191,25 @@ function App() {
   return (
     <div className="app-shell">
       <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
-        <div className="brand">
-          <div className="brand-mark">
-            <ShieldCheck size={22} />
-          </div>
-          <div>
-            <strong>Circulacion GT</strong>
-            <span>Tarjetas vehiculares</span>
+        <div className="sidebar-head">
+          <button
+            className="sidebar-menu-button"
+            title={sidebarOpen ? "Compactar menu" : "Abrir menu"}
+            onClick={(event) => {
+              event.stopPropagation();
+              setSidebarOpen(!sidebarOpen);
+            }}
+          >
+            <Menu size={20} />
+          </button>
+          <div className="brand">
+            <div className="brand-mark">
+              <ShieldCheck size={22} />
+            </div>
+            <div>
+              <strong>Circula<span>.</span></strong>
+              <small>Tarjetas vehiculares</small>
+            </div>
           </div>
         </div>
 
@@ -205,23 +217,37 @@ function App() {
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
-              <button key={item.id} className={activeView === item.id ? "active" : ""} onClick={() => setActiveView(item.id)}>
+              <button
+                key={item.id}
+                className={activeView === item.id ? "active" : ""}
+                onClick={() => {
+                  setActiveView(item.id);
+                  setSidebarOpen(false);
+                }}
+              >
                 <Icon size={18} />
-                {item.label}
+                <span className="nav-label">{item.label}</span>
               </button>
             );
           })}
         </nav>
 
         <div className="connection-card">
-          <span>API conectada</span>
+          <span>Conexion activa</span>
           <strong>{api.baseUrl.replace(/^https?:\/\//, "")}</strong>
         </div>
       </aside>
 
-      <main className="workspace">
+      <main className="workspace" onClick={() => setSidebarOpen(false)}>
         <header className="topbar">
-          <button className="icon-button mobile-only" title="Abrir navegacion" onClick={() => setSidebarOpen(!sidebarOpen)}>
+          <button
+            className="icon-button mobile-only"
+            title="Abrir navegacion"
+            onClick={(event) => {
+              event.stopPropagation();
+              setSidebarOpen(!sidebarOpen);
+            }}
+          >
             <Menu size={20} />
           </button>
           <div>
@@ -396,7 +422,7 @@ function TarjetasView({ rows, loading, query, setQuery, statusFilter, setStatusF
       <div className="panel-toolbar">
         <div className="search-box">
           <Search size={18} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por tarjeta, placa, propietario o DPI" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar tarjeta, placa, propietario o DPI" />
         </div>
         <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
           <option value="TODOS">Todos los estados</option>
