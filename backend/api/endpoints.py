@@ -12,6 +12,8 @@ router = APIRouter()
 
 
 def commit_error_to_http(exc: IntegrityError):
+    if "no puede tener mas de una tarjeta vigente" in str(exc.orig):
+        raise HTTPException(status_code=409, detail="Un vehiculo no puede tener mas de una tarjeta activa (VIGENTE)")
     raise HTTPException(status_code=409, detail="Conflicto de integridad en la base de datos")
 
 
@@ -25,6 +27,12 @@ def validate_tarjeta_dates(current: models.TarjetaCirculacion, changes: schemas.
     fecha_vencimiento = changes.fecha_vencimiento or current.fecha_vencimiento
     if fecha_vencimiento <= fecha_emision:
         raise HTTPException(status_code=400, detail="fecha_vencimiento debe ser posterior a fecha_emision")
+
+
+def validate_tarjetas_activas_limit(db: Session, vehiculo_id: int, exclude_tarjeta_id: int = None):
+    vigentes = crud.count_tarjetas_vigentes_by_vehiculo(db, vehiculo_id, exclude_tarjeta_id)
+    if vigentes >= crud.MAX_TARJETAS_VIGENTES_POR_VEHICULO:
+        raise HTTPException(status_code=409, detail="Un vehiculo no puede tener mas de una tarjeta activa (VIGENTE)")
 
 
 @router.get("/resumen/", tags=["Dashboard"])
@@ -157,6 +165,8 @@ def read_tarjeta(tarjeta_id: int, db: Session = Depends(get_db)):
 def create_tarjeta(tarjeta: schemas.TarjetaCirculacionCreate, db: Session = Depends(get_db)):
     if crud.get_tarjeta_by_numero(db, tarjeta.numero_tarjeta):
         raise HTTPException(status_code=409, detail="Numero de tarjeta already registered")
+    if tarjeta.estado == models.EstadoTarjetaEnum.VIGENTE:
+        validate_tarjetas_activas_limit(db, tarjeta.id_vehiculo)
     try:
         return crud.create_tarjeta(db, tarjeta)
     except IntegrityError as exc:
@@ -170,6 +180,10 @@ def update_tarjeta(tarjeta_id: int, tarjeta: schemas.TarjetaCirculacionUpdate, d
     if not current:
         raise HTTPException(status_code=404, detail="Tarjeta not found")
     validate_tarjeta_dates(current, tarjeta)
+    next_vehiculo_id = tarjeta.id_vehiculo if tarjeta.id_vehiculo is not None else current.id_vehiculo
+    next_estado = tarjeta.estado if tarjeta.estado is not None else current.estado
+    if next_estado == models.EstadoTarjetaEnum.VIGENTE:
+        validate_tarjetas_activas_limit(db, next_vehiculo_id, exclude_tarjeta_id=tarjeta_id)
 
     try:
         db_tarjeta = crud.update_tarjeta(db, tarjeta_id, tarjeta)
@@ -245,6 +259,7 @@ def reactivate_tarjeta(tarjeta_id: int, payload: schemas.ReactivarTarjetaRequest
         raise HTTPException(status_code=404, detail="Tarjeta not found")
     if tarjeta_actual.estado == models.EstadoTarjetaEnum.VIGENTE:
         raise HTTPException(status_code=400, detail="La tarjeta ya esta vigente")
+    validate_tarjetas_activas_limit(db, tarjeta_actual.id_vehiculo, exclude_tarjeta_id=tarjeta_id)
     return crud.reactivate_tarjeta(db, tarjeta_id, payload.motivo, payload.usuario_id)
 
 

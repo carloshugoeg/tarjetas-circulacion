@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -180,9 +181,77 @@ def test_duplicate_tarjeta_returns_conflict_and_session_recovers(client):
 
     assert duplicate.status_code == 409
 
-    valid = client.post("/api/tarjetas/", json=tarjeta_payload(numero_tarjeta="TC-BASE-000002"))
+    valid = client.post("/api/tarjetas/", json=tarjeta_payload(numero_tarjeta="TC-BASE-000002", estado="SUSPENDIDA"))
     assert valid.status_code == 201
     assert valid.json()["numero_tarjeta"] == "TC-BASE-000002"
+
+
+def test_vehicle_cannot_have_more_than_one_active_card(client):
+    second = client.post("/api/tarjetas/", json=tarjeta_payload(numero_tarjeta="TC-BASE-000002"))
+
+    assert second.status_code == 409
+    assert "mas de una tarjeta activa" in second.json()["detail"]
+
+
+def test_vehicle_can_have_extra_inactive_cards(client):
+    inactive = client.post(
+        "/api/tarjetas/",
+        json=tarjeta_payload(numero_tarjeta="TC-BASE-000002", estado="SUSPENDIDA"),
+    )
+
+    assert inactive.status_code == 201
+    assert inactive.json()["estado"] == "SUSPENDIDA"
+
+
+def test_tarjeta_update_cannot_exceed_active_card_limit(client):
+    inactive = client.post(
+        "/api/tarjetas/",
+        json=tarjeta_payload(numero_tarjeta="TC-BASE-000002", estado="SUSPENDIDA"),
+    )
+    assert inactive.status_code == 201
+
+    response = client.patch(f"/api/tarjetas/{inactive.json()['id_tarjeta']}", json={"estado": "VIGENTE"})
+
+    assert response.status_code == 409
+    assert "mas de una tarjeta activa" in response.json()["detail"]
+
+
+def test_reactivate_tarjeta_cannot_exceed_active_card_limit(client):
+    inactive = client.post(
+        "/api/tarjetas/",
+        json=tarjeta_payload(numero_tarjeta="TC-BASE-000002", estado="SUSPENDIDA"),
+    )
+    assert inactive.status_code == 201
+
+    response = client.patch(
+        f"/api/tarjetas/{inactive.json()['id_tarjeta']}/reactivar",
+        json={"motivo": "Reactivacion de prueba"},
+    )
+
+    assert response.status_code == 409
+    assert "mas de una tarjeta activa" in response.json()["detail"]
+
+
+def test_database_trigger_blocks_more_than_one_active_card(db_session):
+    db = db_session()
+    try:
+        db.add(
+            models.TarjetaCirculacion(
+                id_vehiculo=1,
+                id_propietario=1,
+                numero_tarjeta="TC-BASE-000002",
+                fecha_emision=date.today(),
+                fecha_vencimiento=date.today() + timedelta(days=365),
+                estado=models.EstadoTarjetaEnum.VIGENTE,
+                id_usuario_emision=1,
+            )
+        )
+
+        with pytest.raises(IntegrityError):
+            db.commit()
+    finally:
+        db.rollback()
+        db.close()
 
 
 def test_vehicle_line_must_belong_to_selected_brand(client):

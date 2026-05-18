@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, DateTime, Numeric, Text, BigInteger, Enum as SQLEnum, CheckConstraint, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, DateTime, Numeric, Text, BigInteger, Enum as SQLEnum, CheckConstraint, UniqueConstraint, DDL, event
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from backend.core.database import Base
@@ -172,6 +172,53 @@ class TarjetaCirculacion(Base):
     usuario_emision = relationship("UsuarioSistema", back_populates="tarjetas_emitidas")
     historial = relationship("HistorialCambios", back_populates="tarjeta")
     alertas = relationship("Alerta", back_populates="tarjeta")
+
+
+validar_maximo_tarjetas_vigentes_vehiculo = DDL("""
+CREATE OR REPLACE FUNCTION validar_maximo_tarjetas_vigentes_vehiculo()
+RETURNS TRIGGER AS $$
+DECLARE
+    tarjetas_vigentes INT;
+BEGIN
+    IF NEW.estado = 'VIGENTE' THEN
+        PERFORM pg_advisory_xact_lock(hashtext('tarjeta_circulacion_vigente_vehiculo'), NEW.id_vehiculo);
+
+        SELECT COUNT(*)
+        INTO tarjetas_vigentes
+        FROM tarjeta_circulacion
+        WHERE id_vehiculo = NEW.id_vehiculo
+          AND estado = 'VIGENTE'
+          AND id_tarjeta <> COALESCE(NEW.id_tarjeta, -1);
+
+        IF tarjetas_vigentes >= 1 THEN
+            RAISE EXCEPTION 'Un vehiculo no puede tener mas de una tarjeta vigente'
+                USING ERRCODE = 'check_violation';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+""").execute_if(dialect="postgresql")
+
+crear_trigger_maximo_tarjetas_vigentes_vehiculo = DDL("""
+DROP TRIGGER IF EXISTS trg_maximo_tarjetas_vigentes_vehiculo ON tarjeta_circulacion;
+
+CREATE TRIGGER trg_maximo_tarjetas_vigentes_vehiculo
+BEFORE INSERT OR UPDATE OF id_vehiculo, estado ON tarjeta_circulacion
+FOR EACH ROW
+EXECUTE FUNCTION validar_maximo_tarjetas_vigentes_vehiculo();
+""").execute_if(dialect="postgresql")
+
+eliminar_trigger_maximo_tarjetas_vigentes_vehiculo = DDL("""
+DROP TRIGGER IF EXISTS trg_maximo_tarjetas_vigentes_vehiculo ON tarjeta_circulacion;
+DROP FUNCTION IF EXISTS validar_maximo_tarjetas_vigentes_vehiculo();
+""").execute_if(dialect="postgresql")
+
+event.listen(TarjetaCirculacion.__table__, "after_create", validar_maximo_tarjetas_vigentes_vehiculo)
+event.listen(TarjetaCirculacion.__table__, "after_create", crear_trigger_maximo_tarjetas_vigentes_vehiculo)
+event.listen(TarjetaCirculacion.__table__, "before_drop", eliminar_trigger_maximo_tarjetas_vigentes_vehiculo)
+
 
 class HistorialCambios(Base):
     __tablename__ = "historial_cambios"

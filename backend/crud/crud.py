@@ -5,6 +5,9 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 
 
+MAX_TARJETAS_VIGENTES_POR_VEHICULO = 1
+
+
 def apply_updates(db_obj, values: dict):
     for key, value in values.items():
         setattr(db_obj, key, value)
@@ -119,6 +122,15 @@ def get_tarjeta_by_numero(db: Session, numero_tarjeta: str):
 
 def get_tarjetas(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.TarjetaCirculacion).offset(skip).limit(limit).all()
+
+def count_tarjetas_vigentes_by_vehiculo(db: Session, vehiculo_id: int, exclude_tarjeta_id: int = None):
+    query = db.query(models.TarjetaCirculacion).filter(
+        models.TarjetaCirculacion.id_vehiculo == vehiculo_id,
+        models.TarjetaCirculacion.estado == models.EstadoTarjetaEnum.VIGENTE,
+    )
+    if exclude_tarjeta_id is not None:
+        query = query.filter(models.TarjetaCirculacion.id_tarjeta != exclude_tarjeta_id)
+    return query.count()
 
 def create_tarjeta(db: Session, tarjeta: schemas.TarjetaCirculacionCreate):
     db_tarjeta = models.TarjetaCirculacion(**tarjeta.model_dump())

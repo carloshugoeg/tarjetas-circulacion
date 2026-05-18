@@ -152,6 +152,36 @@ CREATE TABLE tarjeta_circulacion (
     CONSTRAINT chk_fechas CHECK (fecha_vencimiento > fecha_emision)
 );
 
+CREATE OR REPLACE FUNCTION validar_maximo_tarjetas_vigentes_vehiculo()
+RETURNS TRIGGER AS $$
+DECLARE
+    tarjetas_vigentes INT;
+BEGIN
+    IF NEW.estado = 'VIGENTE' THEN
+        PERFORM pg_advisory_xact_lock(hashtext('tarjeta_circulacion_vigente_vehiculo'), NEW.id_vehiculo);
+
+        SELECT COUNT(*)
+        INTO tarjetas_vigentes
+        FROM tarjeta_circulacion
+        WHERE id_vehiculo = NEW.id_vehiculo
+          AND estado = 'VIGENTE'
+          AND id_tarjeta <> COALESCE(NEW.id_tarjeta, -1);
+
+        IF tarjetas_vigentes >= 1 THEN
+            RAISE EXCEPTION 'Un vehiculo no puede tener mas de una tarjeta vigente'
+                USING ERRCODE = 'check_violation';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_maximo_tarjetas_vigentes_vehiculo
+BEFORE INSERT OR UPDATE OF id_vehiculo, estado ON tarjeta_circulacion
+FOR EACH ROW
+EXECUTE FUNCTION validar_maximo_tarjetas_vigentes_vehiculo();
+
 -- ============================================================
 -- HISTORIAL DE CAMBIOS (Auditoria)
 -- ============================================================
